@@ -37,6 +37,22 @@ func TestSignVerifyRoundTrip(t *testing.T) {
 	}
 }
 
+// TestVerifyRejectsShortKey: the stdlib panics on a wrong-size public key,
+// so the envelope layer must refuse first - a verifier handed a truncated
+// key gets an error, not a crash.
+func TestVerifyRejectsShortKey(t *testing.T) {
+	priv, _ := newKey(t)
+	env, err := Sign("t", []byte("payload"), priv, "k")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range [][]byte{nil, {}, make([]byte, 16), make([]byte, ed25519.PublicKeySize+1)} {
+		if _, err := Verify(env, ed25519.PublicKey(key), ""); err == nil {
+			t.Errorf("key of %d bytes must be rejected", len(key))
+		}
+	}
+}
+
 func TestCanonicalBindsPayloadType(t *testing.T) {
 	priv, pub := newKey(t)
 	payload := []byte("same bytes")

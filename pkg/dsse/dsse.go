@@ -62,6 +62,9 @@ func Sign(payloadType string, payload []byte, key ed25519.PrivateKey, keyID stri
 // keyID is not empty the matching signature must exist; otherwise the
 // first signature that verifies wins.
 func Verify(env Envelope, pub ed25519.PublicKey, keyID string) ([]byte, error) {
+	if len(pub) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("dsse: public key must be %d bytes", ed25519.PublicKeySize)
+	}
 	if len(env.Signatures) == 0 {
 		return nil, ErrNoSignatures
 	}
