@@ -1,0 +1,30 @@
+# Example Tetragon TracingPolicy for hive-immune.
+#
+# Emits a process_kprobe event whenever a process opens a credential or
+# privilege file. hive-agent maps events from this policy (by policy name) to
+# a pheromone signal strength, see docs/sensors.md.
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: hive-sensitive-files
+spec:
+  kprobes:
+    - call: security_file_permission
+      syscall: false
+      return: true
+      args:
+        - index: 0
+          type: file
+        - index: 1
+          type: int
+      returnArg:
+        index: 0
+        type: int
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: Prefix
+              values:
+                - /etc/shadow
+                - /etc/sudoers
+                - /root/.ssh

@@ -1,0 +1,31 @@
+# Binaries
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test and coverage output
+*.test
+*.out
+coverage.*
+/testdata/fuzz/**/corpus-local/
+
+# Go workspace files (local only)
+go.work
+go.work.sum
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Secrets must never be committed
+*.pem
+*.key
+.env
+.env.*

@@ -1,0 +1,70 @@
+# hive-immune end-to-end demo: three swarm nodes plus a real Falco sensor.
+#
+#   docker compose -f deploy/compose/docker-compose.yml up -d --build
+#   docker run --rm alpine cat /etc/shadow        # trigger a Falco rule
+#   curl -s localhost:7956/v1/status              # node-2's view of the swarm
+#   docker compose -f deploy/compose/docker-compose.yml logs -f node-2
+#
+# Demo only: every node's key lives in one shared volume. In production each
+# node keeps its own key (hive-agent keygen) and only peers.json is shared.
+#
+# Host ports default to 7946/7956/7966; override with HIVE_PORT_1..3 if they
+# clash (e.g. on hosts whose ephemeral port range starts low).
+
+x-hive: &hive
+  build:
+    context: ../..
+    args:
+      VERSION: 0.1.0
+  image: hive-immune:0.1.0
+  volumes:
+    - cluster:/cluster:ro
+  depends_on:
+    init:
+      condition: service_completed_successfully
+  restart: unless-stopped
+
+services:
+  init:
+    <<: *hive
+    volumes:
+      - cluster:/cluster
+    depends_on: []
+    restart: "no"
+    command: ["init-cluster", "-nodes", "node-1,node-2,node-3", "-addr", "http://{id}:7946",
+              "-zone", "demo", "-out", "/cluster", "-if-missing"]
+
+  node-1:
+    <<: *hive
+    command: ["serve", "-node", "node-1", "-key", "/cluster/node-1.key", "-cluster", "/cluster/peers.json",
+              "-listen", ":7946", "-sensor-listen", "127.0.0.1:7947"]
+    ports: ["127.0.0.1:${HIVE_PORT_1:-7946}:7946"]
+
+  node-2:
+    <<: *hive
+    command: ["serve", "-node", "node-2", "-key", "/cluster/node-2.key", "-cluster", "/cluster/peers.json", "-listen", ":7946"]
+    ports: ["127.0.0.1:${HIVE_PORT_2:-7956}:7946"]
+
+  node-3:
+    <<: *hive
+    command: ["serve", "-node", "node-3", "-key", "/cluster/node-3.key", "-cluster", "/cluster/peers.json", "-listen", ":7946"]
+    ports: ["127.0.0.1:${HIVE_PORT_3:-7966}:7946"]
+
+  # Falco shares node-1's network namespace, so it reaches the sensor
+  # listener on 127.0.0.1 and nothing else can.
+  falco:
+    image: falcosecurity/falco:0.45.0
+    privileged: true
+    network_mode: "service:node-1"
+    depends_on: [node-1]
+    restart: unless-stopped
+    volumes:
+      - /sys/kernel/tracing:/sys/kernel/tracing:ro
+      - /proc:/host/proc:ro
+      - /etc:/host/etc:ro
+      - /var/run/docker.sock:/host/var/run/docker.sock
+    command: ["falco", "-o", "engine.kind=modern_ebpf", "-o", "json_output=true",
+              "-o", "http_output.enabled=true", "-o", "http_output.url=http://127.0.0.1:7947/v1/sensor/falco"]
+
+volumes:
+  cluster:

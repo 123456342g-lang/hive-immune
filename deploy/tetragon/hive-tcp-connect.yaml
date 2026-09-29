@@ -1,0 +1,16 @@
+# Example Tetragon TracingPolicy for hive-immune.
+#
+# Emits a process_kprobe event for every outbound TCP connection. On its own
+# this is telemetry, not an alert: give it a low strength in hive-agent (or
+# narrow it with selectors) so only unusual volumes raise the field.
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: hive-tcp-connect
+spec:
+  kprobes:
+    - call: tcp_connect
+      syscall: false
+      args:
+        - index: 0
+          type: sock
