@@ -20,6 +20,9 @@ const (
 	ActionDeny Action = "deny"
 	// ActionApprove blocks until an operator answers the approval request.
 	ActionApprove Action = "approve"
+	// ActionReset records an operator intervention (a taint reset) in the
+	// audit log. It is not a call outcome: no tools/call ever has it.
+	ActionReset Action = "reset"
 )
 
 // Input is everything the decision engine knows about one call. The zero

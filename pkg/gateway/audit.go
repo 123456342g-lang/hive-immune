@@ -9,7 +9,9 @@ import (
 )
 
 // Record is one line of the audit log: what was asked, what the gateway
-// decided, and (for forwarded calls) a digest of what came back.
+// decided, and (for forwarded calls) a digest of what came back. Operator
+// interventions that are not calls (a taint reset) appear as Action
+// "reset" with an empty tool.
 //
 // Digests are hashes, never content: the log has to be safe to ship to a
 // SIEM and to share across organisations, and it must never become a copy

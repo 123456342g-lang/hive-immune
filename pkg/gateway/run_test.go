@@ -335,6 +335,41 @@ func TestStartAdminAndHandler(t *testing.T) {
 	}
 }
 
+// TestAdminTaintReset: an operator can clear the taint once they have
+// checked what the session read; the intervention is audited and the next
+// egress call is allowed again.
+func TestAdminTaintReset(t *testing.T) {
+	s, out := testServer(t, func(c *Config) { c.PolicyPath = withPolicy(t) })
+	taintSession(t, s, out, 1)
+	ts := httptest.NewServer(s.adminHandler())
+	defer ts.Close()
+
+	if up := feed(t, s, callLine(2, "send_email")); up.Len() != 0 {
+		t.Fatal("a tainted session must not send mail before the reset")
+	}
+	body, code := post(t, ts.URL+"/v1/taint/reset")
+	if code != http.StatusOK || !strings.Contains(body, `"reset": true`) || !strings.Contains(body, `"tainted": false`) {
+		t.Fatalf("reset = %d %q", code, body)
+	}
+	if s.session.Taint.Tainted() {
+		t.Fatal("session must be clean after the reset")
+	}
+	if up := feed(t, s, callLine(3, "send_email")); up.Len() == 0 {
+		t.Fatal("the reset must re-enable egress")
+	}
+
+	recs := mustTail(t, s, 10)
+	last := recs[len(recs)-1]
+	if last.Action != ActionReset || last.Rule != "admin.taint-reset" || !last.TaintedBefore || last.TaintedAfter {
+		t.Fatalf("last record = %+v", last)
+	}
+	// Resetting a clean session is a no-op that is still reported.
+	body, code = post(t, ts.URL+"/v1/taint/reset")
+	if code != http.StatusOK || !strings.Contains(body, `"reset": false`) {
+		t.Fatalf("second reset = %d %q", code, body)
+	}
+}
+
 func TestAdminSessionInFailureMode(t *testing.T) {
 	s, _ := testServer(t, nil)
 	ts := httptest.NewServer(s.adminHandler())

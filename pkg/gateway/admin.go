@@ -48,6 +48,22 @@ func (s *server) adminHandler() http.Handler {
 	mux.HandleFunc("GET /v1/session", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, s.state())
 	})
+	mux.HandleFunc("POST /v1/taint/reset", func(w http.ResponseWriter, _ *http.Request) {
+		// The operator, having looked at what the session read, declares it
+		// clean again. The decision is audited like any other so that a
+		// later review can see who re-enabled egress.
+		before := s.session.Taint.Snapshot()
+		reset := s.session.Taint.Reset()
+		after := s.session.Taint.Snapshot()
+		_ = s.audit.Append(Record{
+			Time: s.cfg.Now(), Session: s.session.ID, Agent: s.session.Agent,
+			Action: ActionReset, Rule: "admin.taint-reset",
+			TaintedBefore: before.Tainted, TaintedAfter: after.Tainted,
+			Reason: "operator reset the session taint",
+		})
+		s.log.Info("session taint reset", "session", s.session.ID, "was_tainted", reset)
+		writeJSON(w, map[string]any{"reset": reset, "taint": after})
+	})
 	mux.HandleFunc("POST /v1/reload", func(w http.ResponseWriter, _ *http.Request) {
 		if err := s.policies.Reload(); err != nil {
 			writeJSON(w, map[string]any{"reloaded": false, "error": err.Error()})

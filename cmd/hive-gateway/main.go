@@ -19,6 +19,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/hive-immune/hive-immune/pkg/gateway"
 )
@@ -35,6 +36,8 @@ serve flags:
   -session id    session id (default: process start time)
   -audit path    audit log file (default "audit.jsonl"; "" disables)
   -deny-style s  how refusals reach the client: tool-result (default) or error
+  -approve url   approval webhook: POSTed every call that needs a human ("" disables)
+  -approve-timeout d  how long a call may wait for the operator (default 60s)
   -admin addr    control plane listen address, e.g. 127.0.0.1:8787 ("" disables)
   -env k=v       extra environment variable for the upstream (repeatable)
 
@@ -68,6 +71,8 @@ func dispatch(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 
 type serveConfig struct {
 	agent, session, policy, audit, denyStyle, admin string
+	approve                                         string
+	approveTimeout                                  time.Duration
 	env                                             []string
 	command                                         []string
 }
@@ -94,6 +99,8 @@ func parseServe(args []string, stderr io.Writer) (serveConfig, error) {
 	fs.StringVar(&c.policy, "policy", "tools.yaml", "tools.yaml classification (empty = failure mode)")
 	fs.StringVar(&c.audit, "audit", "audit.jsonl", "audit log file (empty disables)")
 	fs.StringVar(&c.denyStyle, "deny-style", string(gateway.DenyToolResult), "tool-result or error")
+	fs.StringVar(&c.approve, "approve", "", "approval webhook URL (empty disables the human in the loop)")
+	fs.DurationVar(&c.approveTimeout, "approve-timeout", gateway.DefaultApproveTimeout, "how long a call may wait for the operator")
 	fs.StringVar(&c.admin, "admin", "", "control plane listen address (empty disables)")
 	fs.Var(&envs, "env", "extra environment variable for the upstream, k=v (repeatable)")
 	if err := fs.Parse(args); err != nil {
@@ -114,6 +121,9 @@ func parseServe(args []string, stderr io.Writer) (serveConfig, error) {
 	default:
 		return c, fmt.Errorf("serve: -deny-style %q must be tool-result or error", c.denyStyle)
 	}
+	if c.approveTimeout <= 0 {
+		return c, errors.New("serve: -approve-timeout must be positive")
+	}
 	return c, nil
 }
 
@@ -128,11 +138,17 @@ func serveContext(ctx context.Context, args []string, stdin io.Reader, stdout, s
 	if err != nil || len(c.command) == 0 {
 		return err
 	}
+	var approver gateway.Approver
+	if c.approve != "" {
+		if approver, err = gateway.NewWebhookApprover(c.approve, c.approveTimeout); err != nil {
+			return err
+		}
+	}
 	return gateway.Run(ctx, gateway.Config{
 		Command: c.command, Env: c.env,
 		PolicyPath: c.policy, Agent: c.agent, SessionID: c.session,
 		AuditPath: c.audit, DenyStyle: gateway.DenyStyle(c.denyStyle),
-		AdminAddr: c.admin,
-		ClientIn:  stdin, ClientOut: stdout, Stderr: stderr,
+		AdminAddr: c.admin, Approver: approver,
+		ClientIn: stdin, ClientOut: stdout, Stderr: stderr,
 	})
 }
