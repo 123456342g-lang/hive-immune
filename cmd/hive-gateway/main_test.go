@@ -77,6 +77,12 @@ func (s *syncBuffer) String() string {
 	return s.b.String()
 }
 
+func (s *syncBuffer) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.b.Reset()
+}
+
 func TestVersionAndUnknownCommand(t *testing.T) {
 	var out syncBuffer
 	if err := dispatch([]string{"version"}, nil, &out, &out); err != nil {
@@ -106,6 +112,9 @@ func TestServeRejectsBadUsage(t *testing.T) {
 		{"serve", "-agent", "a1", "-approve", "ftp://ops", "--", os.Args[0]},
 		{"serve", "-agent", "a1", "-approve", "https://", "--", os.Args[0]},
 		{"serve", "-agent", "a1", "-approve-timeout", "0s", "--", os.Args[0]},
+		{"serve", "-agent", "a1", "-capability", "x.cap", "--", os.Args[0]},        // key missing
+		{"serve", "-agent", "a1", "-capability-key", "root.pub", "--", os.Args[0]}, // token missing
+		{"serve", "-agent", "a1", "-capability", "missing.cap", "-capability-key", "missing.pub", "--", os.Args[0]},
 		{"serve", "-bogus", "--", os.Args[0]},
 	}
 	for _, args := range bad {
@@ -322,5 +331,110 @@ func TestServeApprovalRefused(t *testing.T) {
 	last := recs[len(recs)-1]
 	if last.Tool != "send_email" || last.Action != "deny" {
 		t.Fatalf("last record = %+v", last)
+	}
+}
+
+// mintToken runs keygen/pubkey/issue through dispatch, the way an operator
+// would, and returns the token and public key files.
+func mintToken(t *testing.T, agent string, tools ...string) (tokenPath, pubPath string) {
+	t.Helper()
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "root.key")
+	var out, logs syncBuffer
+	if err := dispatch([]string{"keygen", "-out", keyPath}, nil, &out, &logs); err != nil {
+		t.Fatalf("keygen: %v", err)
+	}
+	pub := strings.TrimSpace(out.String())
+	out.Reset()
+	if err := dispatch([]string{"pubkey", "-key", keyPath}, nil, &out, &logs); err != nil {
+		t.Fatalf("pubkey: %v", err)
+	}
+	if strings.TrimSpace(out.String()) != pub {
+		t.Fatal("pubkey does not match keygen output")
+	}
+	pubPath = filepath.Join(dir, "root.pub")
+	if err := os.WriteFile(pubPath, []byte(pub+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tokenPath = filepath.Join(dir, agent+".cap")
+	args := []string{"issue", "-key", keyPath, "-agent", agent, "-ttl", "1h"}
+	for _, tool := range tools {
+		args = append(args, "-tool", tool)
+	}
+	args = append(args, "-out", tokenPath)
+	out.Reset()
+	if err := dispatch(args, nil, &out, &logs); err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	return tokenPath, pubPath
+}
+
+func TestKeygenAndIssueUsage(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "root.key")
+	var out, logs syncBuffer
+	if err := dispatch([]string{"keygen", "-out", keyPath}, nil, &out, &logs); err != nil {
+		t.Fatal(err)
+	}
+	if len(strings.TrimSpace(out.String())) != 64 {
+		t.Fatalf("public key = %q", out.String())
+	}
+	if err := dispatch([]string{"keygen", "-out", keyPath}, nil, &out, &logs); err == nil {
+		t.Fatal("keygen must refuse to overwrite an existing key")
+	}
+	for _, args := range [][]string{
+		{"issue"},                                                              // no -agent, no -tool
+		{"issue", "-agent", "a1"},                                              // no -tool
+		{"issue", "-tool", "t"},                                                // no -agent
+		{"issue", "-agent", "a1", "-tool", "t"},                                // missing key file
+		{"issue", "-key", keyPath, "-agent", "a1"},                             // no -tool
+		{"issue", "-key", keyPath, "-tool", "t"},                               // no -agent
+		{"pubkey", "-key", filepath.Join(dir, "nope.key")},                     // missing key
+		{"issue", "-key", keyPath, "-agent", "a1", "-tool", "t", "-ttl", "0s"}, // no ttl
+	} {
+		if err := dispatch(args, nil, &out, &logs); err == nil {
+			t.Errorf("%v: want error", args)
+		}
+	}
+}
+
+// TestServeCapabilityEndToEnd: the token, not the policy, decides which
+// tools this agent may call - and the refusal reaches the model with a
+// capability rule attached.
+func TestServeCapabilityEndToEnd(t *testing.T) {
+	tokenPath, pubPath := mintToken(t, "a1", "read_file")
+	r := startServe(t, "-capability", tokenPath, "-capability-key", pubPath)
+
+	r.send(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_web","arguments":{"q":"x"}}}`)
+	r.wait("capability.tool-out-of-scope")
+
+	r.send(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"read_file","arguments":{}}}`)
+	r.wait("read_file ok")
+
+	recs := r.finish()
+	if len(recs) != 2 {
+		t.Fatalf("audit = %+v", recs)
+	}
+	if recs[0].Action != "deny" || recs[0].Rule != "capability.tool-out-of-scope" {
+		t.Fatalf("first record = %+v", recs[0])
+	}
+	if recs[1].Action != "allow" || recs[1].Tool != "read_file" {
+		t.Fatalf("second record = %+v", recs[1])
+	}
+}
+
+// TestServeCapabilityRejectsWrongRoot: a token signed by another root key
+// must not start the gateway at all.
+func TestServeCapabilityRejectsWrongRoot(t *testing.T) {
+	tokenPath, _ := mintToken(t, "a1", "read_file")
+	_, otherPub := mintToken(t, "a1", "read_file") // different root, same shape
+	var out syncBuffer
+	args := []string{"serve", "-agent", "a1", "-capability", tokenPath, "-capability-key", otherPub, "--", os.Args[0]}
+	err := dispatch(args, strings.NewReader(""), &out, &out)
+	if err == nil {
+		t.Fatal("a token from another root must be rejected at startup")
+	}
+	if !strings.Contains(err.Error(), "signature") {
+		t.Fatalf("error = %v, want a signature failure", err)
 	}
 }

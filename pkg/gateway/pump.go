@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hive-immune/hive-immune/pkg/capability"
 	"github.com/hive-immune/hive-immune/pkg/taint"
 )
 
@@ -88,6 +89,13 @@ func (s *server) handleCall(ctx context.Context, m Message, up io.Writer) error 
 	}
 	if s.cfg.Enrich != nil {
 		s.cfg.Enrich(&in)
+	}
+	// The capability check is applied after Enrich: it is a hard gate, not
+	// an optional condition, so nothing the swarm reports can widen it.
+	if s.cfg.Capability != nil {
+		if err := s.cfg.Capability.Check(s.session.Agent, param.Name, s.cfg.Now()); err != nil {
+			in.CapabilityDenied = capabilityReason(err)
+		}
 	}
 	d := Decide(s.policies.Current(), in)
 	taintedBefore := in.Tainted
@@ -216,6 +224,17 @@ func (s *server) append(r Record) {
 	if s.cfg.OnDecision != nil {
 		s.cfg.OnDecision(r)
 	}
+}
+
+// capabilityReason maps a checker failure onto the stable rule suffix the
+// decision engine uses. Anything unexpected is treated as "not authorised"
+// rather than allowed through.
+func capabilityReason(err error) string {
+	var d *capability.Denied
+	if errors.As(err, &d) {
+		return d.Reason
+	}
+	return capability.ReasonUnauthorized
 }
 
 // reply sends a denial to the client in the configured style.

@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/hive-immune/hive-immune/pkg/capability"
 )
 
 // DenyStyle is how a refused call is reported to the MCP client.
@@ -72,9 +74,13 @@ type Config struct {
 	Now        func() time.Time
 	Approver   Approver
 	OnDecision func(Record)
-	// Enrich adds the optional conditions (swarm level, capability token,
-	// rate and budget) to an input before the decision is taken. It may be
-	// nil, in which case the call is judged on policy and taint alone.
+	// Capability, when set, is the biscuit token the session must present:
+	// every tools/call is checked against its subject, scope and expiry
+	// before the policy engine runs. Nil means no token is required.
+	Capability *capability.Checker
+	// Enrich adds the optional conditions (swarm level, rate and budget)
+	// to an input before the decision is taken. It may be nil, in which
+	// case the call is judged on policy, taint and capability alone.
 	Enrich func(*Input)
 }
 
