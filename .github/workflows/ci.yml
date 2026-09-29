@@ -26,8 +26,10 @@ jobs:
         run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
       - name: vet
         run: go vet ./...
+      # pkg/sim's swarm containment test takes ~50s alone; under -race that
+      # becomes ~25 minutes, hence the generous timeout.
       - name: test
-        run: go test -race -coverprofile=coverage.out ./...
+        run: go test -race -timeout 45m -coverprofile=coverage.out ./...
         shell: bash
       - name: coverage gate (80%)
         if: runner.os == 'Linux'
@@ -49,6 +51,12 @@ jobs:
         run: go test ./pkg/sensor -run '^$' -fuzz FuzzFalcoParse -fuzztime 30s
       - name: fuzz Tetragon parser (short)
         run: go test ./pkg/sensor -run '^$' -fuzz FuzzTetragonParse -fuzztime 30s
+      - name: fuzz capability tokens (short)
+        run: go test ./pkg/capability -run '^$' -fuzz FuzzNewChecker -fuzztime 30s
+      - name: fuzz DSSE envelopes (short)
+        run: go test ./pkg/dsse -run '^$' -fuzz FuzzVerify -fuzztime 30s
+      - name: fuzz credentials (short)
+        run: go test ./pkg/credential -run '^$' -fuzz FuzzVerify -fuzztime 30s
 
   vuln:
     runs-on: ubuntu-latest
