@@ -19,6 +19,8 @@ import (
 
 	"github.com/hive-immune/hive-immune/pkg/credential"
 	"github.com/hive-immune/hive-immune/pkg/dsse"
+	"github.com/hive-immune/hive-immune/pkg/envelope"
+	"github.com/hive-immune/hive-immune/pkg/pheromone"
 )
 
 // TestMain lets the test binary double as a fake MCP stdio server so that
@@ -124,6 +126,10 @@ func TestServeRejectsBadUsage(t *testing.T) {
 		{"serve", "-agent", "a1", "-credential", "c.jsonl", "--", os.Args[0]},   // signing key missing
 		{"serve", "-agent", "a1", "-credential-key", "k.key", "--", os.Args[0]}, // file missing
 		{"serve", "-agent", "a1", "-credential", "c.jsonl", "-credential-key", filepath.Join(t.TempDir(), "no.key"), "--", os.Args[0]},
+		{"serve", "-agent", "a1", "-rate", "-1", "--", os.Args[0]},
+		{"serve", "-agent", "a1", "-budget", "-1", "--", os.Args[0]},
+		{"serve", "-agent", "a1", "-limit-window", "0s", "--", os.Args[0]},
+		{"serve", "-agent", "a1", "-node-key", "n.key", "--", os.Args[0]}, // no -node
 		{"serve", "-bogus", "--", os.Args[0]},
 	}
 	for _, args := range bad {
@@ -429,6 +435,110 @@ func TestServeCapabilityEndToEnd(t *testing.T) {
 	}
 	if recs[1].Action != "allow" || recs[1].Tool != "read_file" {
 		t.Fatalf("second record = %+v", recs[1])
+	}
+}
+
+// TestServeRateLimitEndToEnd: the second call inside the window never
+// leaves the gateway, and the audit log names the limit.
+func TestServeRateLimitEndToEnd(t *testing.T) {
+	r := startServe(t, "-rate", "1")
+	r.send(
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_file","arguments":{}}}`,
+	)
+	r.wait("read_file ok")
+	r.send(
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"read_file","arguments":{}}}`,
+	)
+	r.wait("rate limit exceeded")
+
+	recs := r.finish()
+	if len(recs) != 2 {
+		t.Fatalf("audit = %+v", recs)
+	}
+	if recs[0].Action != "allow" {
+		t.Fatalf("first = %+v", recs[0])
+	}
+	if recs[1].Action != "deny" || recs[1].Rule != "limits.rate" {
+		t.Fatalf("second = %+v", recs[1])
+	}
+}
+
+// TestServeSwarmLevelEndToEnd: -node turns the local swarm's verdict on
+// this agent into a gate in front of the policy.
+func TestServeSwarmLevelEndToEnd(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"members":[{"node":"a1","level":"isolate"}]}`)
+	}))
+	defer ts.Close()
+
+	r := startServe(t, "-node", ts.URL)
+	r.send(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_file","arguments":{}}}`)
+	r.wait("swarm level")
+
+	recs := r.finish()
+	if len(recs) != 1 || recs[0].Rule != "level.isolate" || recs[0].Action != "deny" {
+		t.Fatalf("audit = %+v", recs)
+	}
+}
+
+// TestServeSignalsEndToEnd: a rate-limited refusal is deposited into the
+// fake node as a signed self-report - the whole loop in one process pair.
+func TestServeSignalsEndToEnd(t *testing.T) {
+	var mu sync.Mutex
+	var posted []envelope.Envelope
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = io.WriteString(w, `{"members":[{"node":"a1","level":"none"}]}`)
+		default:
+			var batch []envelope.Envelope
+			_ = json.NewDecoder(r.Body).Decode(&batch)
+			mu.Lock()
+			posted = append(posted, batch...)
+			mu.Unlock()
+			_, _ = io.WriteString(w, `{"accepted":1}`)
+		}
+	}))
+	defer ts.Close()
+
+	// The gateway's own key, the way an operator would make it.
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "agent.key")
+	var out, logs syncBuffer
+	if err := dispatch([]string{"keygen", "-out", keyPath}, nil, &out, &logs); err != nil {
+		t.Fatalf("keygen: %v", err)
+	}
+	pubHex := strings.TrimSpace(out.String())
+
+	r := startServe(t, "-rate", "1", "-node", ts.URL, "-node-key", keyPath)
+	r.send(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_file","arguments":{}}}`)
+	r.wait("read_file ok")
+	r.send(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"read_file","arguments":{}}}`)
+	r.wait("rate limit exceeded")
+	recs := r.finish()
+	if len(recs) != 2 || recs[1].Rule != "limits.rate" {
+		t.Fatalf("audit = %+v", recs)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(posted) != 1 {
+		t.Fatalf("got %d signals, want 1", len(posted))
+	}
+	rawPub, err := hex.DecodeString(pubHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ring, err := envelope.NewKeyring(map[pheromone.NodeID]ed25519.PublicKey{"a1": ed25519.PublicKey(rawPub)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := ring.Open(posted[0])
+	if err != nil {
+		t.Fatalf("signal must verify: %v", err)
+	}
+	if sig.Kind != "gateway.limits.rate" || sig.Subject != "a1" {
+		t.Fatalf("signal = %+v", sig)
 	}
 }
 

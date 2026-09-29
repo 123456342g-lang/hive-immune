@@ -60,12 +60,32 @@ func TestParsePolicyRejectsBadDocuments(t *testing.T) {
 		"unknown risk":    "version: 1\ntools:\n  x: {risk: delete, taint: internal}",
 		"unknown taint":   "version: 1\ntools:\n  x: {risk: read, taint: maybe}",
 		"empty tool name": "version: 1\ntools:\n  \"\": {risk: read, taint: internal}",
+		"negative cost":   "version: 1\ntools:\n  x: {risk: read, taint: internal, cost: -1}",
 		"not yaml":        "::::",
 		"bad defaults":    "version: 1\ndefaults: {risk: half, taint: internal}",
 	} {
 		if _, err := ParsePolicy([]byte(doc)); err == nil {
 			t.Errorf("%s: want error, got nil", name)
 		}
+	}
+}
+
+// TestPolicyCost: cost is what one attempt charges the session budget;
+// tools that do not declare one are free.
+func TestPolicyCost(t *testing.T) {
+	p, err := ParsePolicy([]byte(`version: 1
+defaults: {risk: egress, taint: external}
+tools:
+  send_email: {risk: egress, taint: internal, cost: 5}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Classify("send_email").Cost; got != 5 {
+		t.Fatalf("send_email cost = %d, want 5", got)
+	}
+	if got := p.Classify("read_file").Cost; got != 0 {
+		t.Fatalf("unregistered tool cost = %d, want 0 (free)", got)
 	}
 }
 

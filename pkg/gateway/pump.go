@@ -78,14 +78,28 @@ func (s *server) handleCall(ctx context.Context, m Message, up io.Writer) error 
 		s.session.count(func(c *SessionCounters) { c.Denied++ })
 		s.append(Record{Time: start, CallID: m.IDKey(), Tool: param.Name, Risk: d.Risk,
 			Action: d.Action, Rule: d.Rule, Reason: d.Reason})
-		return s.reply(m, d)
+		return s.refuse(m, d)
 	}
 
 	argsDigest := DigestArgs(param.Arguments)
+	p := s.policies.Current()
 	in := Input{
 		Tool:                param.Name,
 		Tainted:             s.session.Taint.Tainted(),
 		ApprovalUnavailable: s.cfg.Approver == nil,
+	}
+	// Built-in enrichments: what the swarm says about this agent, and how
+	// much this session has spent of its rate and budget. They run before
+	// the operator's Enrich hook, which may therefore override them.
+	if s.feed != nil {
+		in.Level = s.feed.Level()
+	}
+	if s.limits != nil {
+		var cost int
+		if p != nil {
+			cost = p.Classify(param.Name).Cost
+		}
+		in.RateExceeded, in.BudgetExceeded = s.limits.observe(cost)
 	}
 	if s.cfg.Enrich != nil {
 		s.cfg.Enrich(&in)
@@ -97,7 +111,7 @@ func (s *server) handleCall(ctx context.Context, m Message, up io.Writer) error 
 			in.CapabilityDenied = capabilityReason(err)
 		}
 	}
-	d := Decide(s.policies.Current(), in)
+	d := Decide(p, in)
 	taintedBefore := in.Tainted
 
 	switch d.Action {
@@ -109,7 +123,7 @@ func (s *server) handleCall(ctx context.Context, m Message, up io.Writer) error 
 			}
 		})
 		s.append(s.record(m.IDKey(), param, d, argsDigest, taintedBefore, start))
-		return s.reply(m, d)
+		return s.refuse(m, d)
 
 	case ActionApprove:
 		s.session.count(func(c *SessionCounters) { c.Approvals++ })
@@ -119,7 +133,7 @@ func (s *server) handleCall(ctx context.Context, m Message, up io.Writer) error 
 			d.Action = ActionDeny
 			d.Reason += "; approval refused: " + why
 			s.append(s.record(m.IDKey(), param, d, argsDigest, taintedBefore, start))
-			return s.reply(m, d)
+			return s.refuse(m, d)
 		}
 		s.session.count(func(c *SessionCounters) { c.Approved++ })
 		d.Reason += "; approved by an operator"
@@ -243,7 +257,16 @@ func capabilityReason(err error) string {
 	return capability.ReasonUnauthorized
 }
 
-// reply sends a denial to the client in the configured style.
+// refuse sends the denial to the client first, then reports it to the
+// swarm: the agent's answer never waits on a node that may be down.
+func (s *server) refuse(m Message, d Decision) error {
+	err := s.reply(m, d)
+	if s.emitter != nil {
+		s.emitter.notify(d.Rule)
+	}
+	return err
+}
+
 func (s *server) reply(m Message, d Decision) error {
 	resp := Message{JSONRPC: "2.0", ID: m.ID}
 	if s.cfg.DenyStyle == DenyError {

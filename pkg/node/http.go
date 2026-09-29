@@ -19,6 +19,10 @@ const maxBodyBytes = 2 << 20
 // FalcoPath is where the sensor listener accepts Falco http_output alerts.
 const FalcoPath = "/v1/sensor/falco"
 
+// StatusPath is where the node reports its swarm view (levels per member).
+// The gateway reads it to learn its own response level.
+const StatusPath = "/v1/status"
+
 // BatchResult reports what happened to a batch of envelopes.
 type BatchResult struct {
 	Accepted  int `json:"accepted"`
@@ -39,7 +43,7 @@ type StatusReport struct {
 func (n *Node) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST "+EnvelopesPath, n.handleEnvelopes)
-	mux.HandleFunc("GET /v1/status", n.handleStatus)
+	mux.HandleFunc("GET "+StatusPath, n.handleStatus)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok\n"))
 	})

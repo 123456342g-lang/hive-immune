@@ -2,10 +2,12 @@ package gateway
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"sync"
@@ -13,6 +15,8 @@ import (
 
 	"github.com/hive-immune/hive-immune/pkg/capability"
 	"github.com/hive-immune/hive-immune/pkg/credential"
+	"github.com/hive-immune/hive-immune/pkg/envelope"
+	"github.com/hive-immune/hive-immune/pkg/pheromone"
 )
 
 // DenyStyle is how a refused call is reported to the MCP client.
@@ -82,9 +86,32 @@ type Config struct {
 	// Credential, when set, signs every decision as a DSSE envelope so that
 	// someone who does not trust the audit file can still verify it.
 	Credential *credential.Log
-	// Enrich adds the optional conditions (swarm level, rate and budget)
-	// to an input before the decision is taken. It may be nil, in which
-	// case the call is judged on policy, taint and capability alone.
+
+	// RateLimit caps tools/call attempts per LimitWindow for this session;
+	// Budget caps their total cost. Zero disables each limit.
+	RateLimit int
+	Budget    int
+	// LimitWindow is the accounting window for the two limits. Zero means
+	// DefaultLimitWindow.
+	LimitWindow time.Duration
+
+	// NodeURL is the base URL of the local swarm node (e.g.
+	// http://127.0.0.1:7946). When set, the gateway reads this agent's
+	// response level from the node before every decision, so an isolate
+	// verdict freezes the session here too. Empty disables swarm feedback.
+	NodeURL string
+	// NodeKey, together with NodeURL, lets the gateway deposit signed
+	// signals about its own refusals into the swarm. The matching public
+	// key must be listed in peers.json under Agent. Nil means read-only.
+	NodeKey ed25519.PrivateKey
+	// SignalCooldown suppresses repeat reports of the same rule; zero
+	// means DefaultSignalCooldown.
+	SignalCooldown time.Duration
+
+	// Enrich runs after the built-in swarm level and limit checks and
+	// before the hard gates: it may tighten (or, knowing the risks,
+	// loosen) the conditions, but it can neither widen a capability
+	// denial nor reach past the policy engine. It may be nil.
 	Enrich func(*Input)
 }
 
@@ -104,6 +131,9 @@ type server struct {
 	policies *policyStore
 	session  *Session
 	audit    *Audit
+	limits   *limiter
+	feed     *swarmFeed
+	emitter  *emitter
 
 	// clientMu serialises writes to the client; serverMu serialises writes
 	// to the upstream. The two pumps run concurrently.
@@ -232,12 +262,41 @@ func newServer(cfg Config) (*server, error) {
 		p := policies.Current()
 		log.Info("policy loaded", "path", cfg.PolicyPath, "tools", p.Count())
 	}
+	if cfg.RateLimit < 0 || cfg.Budget < 0 {
+		return nil, errors.New("gateway: rate and budget limits must not be negative")
+	}
+	var limits *limiter
+	if cfg.RateLimit > 0 || cfg.Budget > 0 {
+		limits = newLimiter(cfg.RateLimit, cfg.Budget, cfg.LimitWindow, cfg.Now)
+	}
+	var feed *swarmFeed
+	var emit *emitter
+	switch {
+	case cfg.NodeURL != "":
+		if cfg.Agent == "" {
+			return nil, errors.New("gateway: NodeURL requires an agent id: the swarm only knows members by name")
+		}
+		client := &http.Client{Timeout: nodeClientTimeout}
+		feed = newSwarmFeed(cfg.NodeURL, cfg.Agent, client, cfg.Now, log, DefaultStatusTTL, DefaultStatusMaxStale)
+		if cfg.NodeKey != nil {
+			signer, err := envelope.NewSigner(pheromone.NodeID(cfg.Agent), cfg.NodeKey)
+			if err != nil {
+				return nil, fmt.Errorf("gateway: swarm signal key: %w", err)
+			}
+			emit = newEmitter(signer, cfg.NodeURL, client, cfg.Now, cfg.SignalCooldown, log)
+		}
+	case cfg.NodeKey != nil:
+		return nil, errors.New("gateway: a swarm signal key requires NodeURL")
+	}
 	return &server{
 		cfg:      cfg,
 		log:      log,
 		policies: policies,
 		session:  NewSession(cfg.SessionID, cfg.Agent),
 		audit:    audit,
+		limits:   limits,
+		feed:     feed,
+		emitter:  emit,
 		pending:  make(map[string]*pendingCall),
 	}, nil
 }

@@ -34,11 +34,13 @@ var ErrInvalidPolicy = errors.New("gateway: invalid policy")
 // DefaultVersion is the only tools.yaml version this build understands.
 const DefaultVersion = 1
 
-// Class is the policy entry for one tool: what it may do, and whether its
-// output counts as untrusted content.
+// Class is the policy entry for one tool: what it may do, whether its
+// output counts as untrusted content, and what one call costs the budget.
 type Class struct {
 	Risk  Risk         `yaml:"risk"`
 	Taint taint.Source `yaml:"taint"`
+	// Cost is charged to the session budget on every attempt (0 = free).
+	Cost int `yaml:"cost,omitempty"`
 }
 
 // Validate checks one classification.
@@ -52,6 +54,9 @@ func (c Class) Validate(what string) error {
 	case taint.SourceInternal, taint.SourceExternal:
 	default:
 		return fmt.Errorf("%w: %s: taint %q is not internal or external", ErrInvalidPolicy, what, c.Taint)
+	}
+	if c.Cost < 0 {
+		return fmt.Errorf("%w: %s: cost %d must not be negative", ErrInvalidPolicy, what, c.Cost)
 	}
 	return nil
 }

@@ -53,6 +53,13 @@ serve flags (with the upstream command after --):
   -capability-key path capability root public key file (requires -capability)
   -credential path     file receiving signed decision credentials (requires -credential-key)
   -credential-key path signing key for credentials, from hive-gateway keygen (requires -credential)
+  -rate n        max tools/call attempts per window (0 disables, default 0)
+  -budget n      max total tool cost per window (0 disables, default 0)
+  -limit-window d  window for -rate and -budget (default 1m)
+  -node url      local swarm node base URL (e.g. http://127.0.0.1:7946); reads this
+                 agent's response level and, with -node-key, deposits refusal signals
+  -node-key path private key signing swarm signals (requires -node); the public half
+                 must be listed in peers.json under -agent
   -admin addr    control plane listen address, e.g. 127.0.0.1:8787 ("" disables)
   -env k=v       extra environment variable for the upstream (repeatable)
 
@@ -105,6 +112,9 @@ type serveConfig struct {
 	approveTimeout                                  time.Duration
 	capability, capabilityKey                       string
 	credential, credentialKey                       string
+	rate, budget                                    int
+	limitWindow                                     time.Duration
+	node, nodeKey                                   string
 	env                                             []string
 	command                                         []string
 }
@@ -149,6 +159,11 @@ func parseServe(args []string, stderr io.Writer) (serveConfig, error) {
 	fs.StringVar(&c.capabilityKey, "capability-key", "", "capability root public key file (requires -capability)")
 	fs.StringVar(&c.credential, "credential", "", "file receiving signed decision credentials (requires -credential-key)")
 	fs.StringVar(&c.credentialKey, "credential-key", "", "private signing key file for credentials (requires -credential)")
+	fs.IntVar(&c.rate, "rate", 0, "max tools/call attempts per window (0 disables)")
+	fs.IntVar(&c.budget, "budget", 0, "max total tool cost per window (0 disables)")
+	fs.DurationVar(&c.limitWindow, "limit-window", gateway.DefaultLimitWindow, "window for -rate and -budget")
+	fs.StringVar(&c.node, "node", "", "local swarm node base URL (empty disables swarm feedback)")
+	fs.StringVar(&c.nodeKey, "node-key", "", "private key signing swarm signals (requires -node)")
 	fs.StringVar(&c.admin, "admin", "", "control plane listen address (empty disables)")
 	fs.Var(&envs, "env", "extra environment variable for the upstream, k=v (repeatable)")
 	if err := fs.Parse(args); err != nil {
@@ -177,6 +192,15 @@ func parseServe(args []string, stderr io.Writer) (serveConfig, error) {
 	}
 	if (c.credential == "") != (c.credentialKey == "") {
 		return c, errors.New("serve: -credential and -credential-key must be used together")
+	}
+	if c.rate < 0 || c.budget < 0 {
+		return c, errors.New("serve: -rate and -budget must not be negative")
+	}
+	if c.limitWindow <= 0 {
+		return c, errors.New("serve: -limit-window must be positive")
+	}
+	if c.nodeKey != "" && c.node == "" {
+		return c, errors.New("serve: -node-key requires -node")
 	}
 	return c, nil
 }
@@ -209,13 +233,21 @@ func serveContext(ctx context.Context, args []string, stdin io.Reader, stdout, s
 		return err
 	}
 	defer func() { _ = creds.Close() }()
+	var nodeKey ed25519.PrivateKey
+	if c.nodeKey != "" {
+		if nodeKey, err = keyfile.Load(c.nodeKey); err != nil {
+			return fmt.Errorf("serve: -node-key: %w", err)
+		}
+	}
 	return gateway.Run(ctx, gateway.Config{
 		Command: c.command, Env: c.env,
 		PolicyPath: c.policy, Agent: c.agent, SessionID: c.session,
 		AuditPath: c.audit, DenyStyle: gateway.DenyStyle(c.denyStyle),
 		AdminAddr: c.admin, Approver: approver, Capability: checker,
 		Credential: creds,
-		ClientIn:   stdin, ClientOut: stdout, Stderr: stderr,
+		RateLimit:  c.rate, Budget: c.budget, LimitWindow: c.limitWindow,
+		NodeURL: c.node, NodeKey: nodeKey,
+		ClientIn: stdin, ClientOut: stdout, Stderr: stderr,
 	})
 }
 
