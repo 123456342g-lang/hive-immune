@@ -3,9 +3,13 @@ package capability
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/biscuit-auth/biscuit-go/v2/datalog"
 )
 
 func newRoot(t *testing.T) ed25519.PrivateKey {
@@ -132,5 +136,50 @@ func TestCheckRejectsBadNames(t *testing.T) {
 	}
 	if got := err.(*Denied).Reason; got != ReasonMalformed {
 		t.Fatalf("reason = %q", got)
+	}
+}
+
+// TestEngineLimitReportsUnauthorized: when the datalog engine runs out of
+// its evaluation budget the answer is "unknown", not "no". A token with
+// more tools than the engine's fact budget blows that budget
+// deterministically, and the denial must say unauthorized instead of
+// inventing a story about the token.
+func TestEngineLimitReportsUnauthorized(t *testing.T) {
+	root := newRoot(t)
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+	tools := make([]string, 1200) // the default world budget is 1000 facts
+	for i := range tools {
+		tools[i] = fmt.Sprintf("t%04d", i)
+	}
+	token, err := Issue(root, IssueRequest{Subject: "agent-1", Tools: tools, TTL: time.Hour}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewChecker(token, root.Public().(ed25519.PublicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDenied(t, c, "agent-1", "t0000", now, ReasonUnauthorized)
+}
+
+// TestGateDistrustsEngineNotToken: every run-limit failure is an honest
+// unauthorized; every other failure keeps the concern the caller named.
+func TestGateDistrustsEngineNotToken(t *testing.T) {
+	for _, limit := range []error{
+		datalog.ErrWorldRunLimitTimeout,
+		datalog.ErrWorldRunLimitMaxFacts,
+		datalog.ErrWorldRunLimitMaxIterations,
+	} {
+		got, ok := gate(&limitError{err: limit}, ReasonSubject, "x").(*Denied)
+		if !ok || got.Reason != ReasonUnauthorized {
+			t.Errorf("%v: gate reported %+v, want unauthorized", limit, got)
+		}
+	}
+	got, ok := gate(errors.New("check failed"), ReasonExpired, "y").(*Denied)
+	if !ok || got.Reason != ReasonExpired {
+		t.Errorf("ordinary failure reported %+v, want expired", got)
+	}
+	if err := gate(nil, ReasonSubject, "z"); err != nil {
+		t.Errorf("passing check reported %v", err)
 	}
 }

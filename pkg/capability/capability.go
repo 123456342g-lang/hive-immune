@@ -18,11 +18,13 @@ package capability
 import (
 	"crypto/ed25519"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"regexp"
 	"time"
 
 	"github.com/biscuit-auth/biscuit-go/v2"
+	"github.com/biscuit-auth/biscuit-go/v2/datalog"
 	"github.com/biscuit-auth/biscuit-go/v2/parser"
 )
 
@@ -40,6 +42,15 @@ const (
 // strings are quoted, but keeping the alphabet small means a tool name can
 // never be mistaken for syntax.
 var nameRe = regexp.MustCompile(`^[A-Za-z0-9._/-]{1,128}$`)
+
+// evalLimit is the wall-clock budget for one datalog evaluation. The
+// library's default (2ms) is tuned for untrusted tokens: on a busy
+// gateway it can be exceeded by CPU contention alone, and the timeout is
+// then reported as a failed check - blaming the token for a scheduling
+// hiccup. Token content is issuer-controlled (only the root key holder can
+// mint one), so a modest raise keeps the bound against our own bugs while
+// staying far below anything a caller could notice.
+const evalLimit = 50 * time.Millisecond
 
 // Denied is a capability check that did not pass. Reason is the stable
 // short form; Error() is the human sentence that goes to the model.
@@ -163,23 +174,47 @@ func (c *Checker) Check(subject, tool string, now time.Time) error {
 		return denied(ReasonMalformed, "subject or tool name is outside the allowed alphabet")
 	}
 	// Identity: the token must belong to the agent in front of us.
-	if err := c.authorize(fmt.Sprintf(
-		"expect_subject(%q); check if subject($s), expect_subject($s);", subject)); err != nil {
-		return denied(ReasonSubject, "token belongs to a different agent")
+	if err := gate(c.authorize(fmt.Sprintf(
+		"expect_subject(%q); check if subject($s), expect_subject($s);", subject)),
+		ReasonSubject, "token belongs to a different agent"); err != nil {
+		return err
 	}
 	// Expiry: checked on every call, so a session cannot outlive it.
-	if err := c.authorize(fmt.Sprintf(
+	if err := gate(c.authorize(fmt.Sprintf(
 		"time(%s); check if not_after($e), time($t), $t <= $e;",
-		now.UTC().Truncate(time.Second).Format(time.RFC3339))); err != nil {
-		return denied(ReasonExpired, "token has expired")
+		now.UTC().Truncate(time.Second).Format(time.RFC3339))),
+		ReasonExpired, "token has expired"); err != nil {
+		return err
 	}
 	// Scope: the tool named in this call must appear in the token.
-	if err := c.authorize(fmt.Sprintf(
-		"call_tool(%q); check if call_tool($t), tool($t);", tool)); err != nil {
-		return denied(ReasonOutOfScope, "tool is not in the token's scope")
+	if err := gate(c.authorize(fmt.Sprintf(
+		"call_tool(%q); check if call_tool($t), tool($t);", tool)),
+		ReasonOutOfScope, "tool is not in the token's scope"); err != nil {
+		return err
 	}
 	return nil
 }
+
+// gate turns an authorize outcome into a denial. When the engine ran out
+// of its evaluation budget the answer is "unknown", not "no": report it as
+// unauthorized instead of blaming the token for the gateway being busy.
+func gate(err error, reason, detail string) error {
+	if err == nil {
+		return nil
+	}
+	var le *limitError
+	if errors.As(err, &le) {
+		return denied(ReasonUnauthorized, "token evaluation hit its safety limit; denying without guessing")
+	}
+	return denied(reason, detail)
+}
+
+// limitError wraps a datalog run-limit failure (timeout, fact cap or
+// iteration cap).
+type limitError struct{ err error }
+
+func (e *limitError) Error() string { return "capability: evaluation limit: " + e.err.Error() }
+func (e *limitError) Unwrap() error { return e.err }
 
 // authorize runs one concern against a fresh authorizer. Each concern gets
 // its own pass so the caller learns which gate refused; the token's own
@@ -190,7 +225,8 @@ func (c *Checker) Check(subject, tool string, now time.Time) error {
 // only after every check has passed, so "allow if true" here means "the
 // checks are the decision".
 func (c *Checker) authorize(contents string) error {
-	auth, err := c.tok.Authorizer(c.root)
+	auth, err := c.tok.Authorizer(c.root, biscuit.WithWorldOptions(
+		datalog.WithMaxDuration(evalLimit)))
 	if err != nil {
 		return err
 	}
@@ -204,5 +240,13 @@ func (c *Checker) authorize(contents string) error {
 		return fmt.Errorf("capability: internal policy: %w", err)
 	}
 	auth.AddPolicy(allow)
-	return auth.Authorize()
+	if err := auth.Authorize(); err != nil {
+		if errors.Is(err, datalog.ErrWorldRunLimitTimeout) ||
+			errors.Is(err, datalog.ErrWorldRunLimitMaxFacts) ||
+			errors.Is(err, datalog.ErrWorldRunLimitMaxIterations) {
+			return &limitError{err: err}
+		}
+		return err
+	}
+	return nil
 }
