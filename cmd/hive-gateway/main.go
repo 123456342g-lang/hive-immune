@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/hive-immune/hive-immune/pkg/capability"
+	"github.com/hive-immune/hive-immune/pkg/credential"
 	"github.com/hive-immune/hive-immune/pkg/gateway"
 	"github.com/hive-immune/hive-immune/pkg/keyfile"
 )
@@ -50,6 +51,8 @@ serve flags (with the upstream command after --):
   -approve-timeout d  how long a call may wait for the operator (default 60s)
   -capability path     capability token file (requires -capability-key)
   -capability-key path capability root public key file (requires -capability)
+  -credential path     file receiving signed decision credentials (requires -credential-key)
+  -credential-key path signing key for credentials, from hive-gateway keygen (requires -credential)
   -admin addr    control plane listen address, e.g. 127.0.0.1:8787 ("" disables)
   -env k=v       extra environment variable for the upstream (repeatable)
 
@@ -101,6 +104,7 @@ type serveConfig struct {
 	approve                                         string
 	approveTimeout                                  time.Duration
 	capability, capabilityKey                       string
+	credential, credentialKey                       string
 	env                                             []string
 	command                                         []string
 }
@@ -143,6 +147,8 @@ func parseServe(args []string, stderr io.Writer) (serveConfig, error) {
 	fs.DurationVar(&c.approveTimeout, "approve-timeout", gateway.DefaultApproveTimeout, "how long a call may wait for the operator")
 	fs.StringVar(&c.capability, "capability", "", "capability token file (requires -capability-key)")
 	fs.StringVar(&c.capabilityKey, "capability-key", "", "capability root public key file (requires -capability)")
+	fs.StringVar(&c.credential, "credential", "", "file receiving signed decision credentials (requires -credential-key)")
+	fs.StringVar(&c.credentialKey, "credential-key", "", "private signing key file for credentials (requires -credential)")
 	fs.StringVar(&c.admin, "admin", "", "control plane listen address (empty disables)")
 	fs.Var(&envs, "env", "extra environment variable for the upstream, k=v (repeatable)")
 	if err := fs.Parse(args); err != nil {
@@ -168,6 +174,9 @@ func parseServe(args []string, stderr io.Writer) (serveConfig, error) {
 	}
 	if (c.capability == "") != (c.capabilityKey == "") {
 		return c, errors.New("serve: -capability and -capability-key must be used together")
+	}
+	if (c.credential == "") != (c.credentialKey == "") {
+		return c, errors.New("serve: -credential and -credential-key must be used together")
 	}
 	return c, nil
 }
@@ -195,13 +204,36 @@ func serveContext(ctx context.Context, args []string, stdin io.Reader, stdout, s
 			return err
 		}
 	}
+	creds, err := openCredentials(c.credential, c.credentialKey)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = creds.Close() }()
 	return gateway.Run(ctx, gateway.Config{
 		Command: c.command, Env: c.env,
 		PolicyPath: c.policy, Agent: c.agent, SessionID: c.session,
 		AuditPath: c.audit, DenyStyle: gateway.DenyStyle(c.denyStyle),
 		AdminAddr: c.admin, Approver: approver, Capability: checker,
-		ClientIn: stdin, ClientOut: stdout, Stderr: stderr,
+		Credential: creds,
+		ClientIn:   stdin, ClientOut: stdout, Stderr: stderr,
 	})
+}
+
+// openCredentials loads the signing key and opens the credential file.
+// Empty paths disable credentials (nil log).
+func openCredentials(path, keyPath string) (*credential.Log, error) {
+	if path == "" {
+		return nil, nil
+	}
+	key, err := keyfile.Load(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("serve: -credential-key: %w", err)
+	}
+	creds, err := credential.Open(path, key)
+	if err != nil {
+		return nil, fmt.Errorf("serve: -credential: %w", err)
+	}
+	return creds, nil
 }
 
 // loadChecker reads the token and the root public key and verifies the

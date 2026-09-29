@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hive-immune/hive-immune/pkg/capability"
+	"github.com/hive-immune/hive-immune/pkg/credential"
 )
 
 // DenyStyle is how a refused call is reported to the MCP client.
@@ -78,6 +79,9 @@ type Config struct {
 	// every tools/call is checked against its subject, scope and expiry
 	// before the policy engine runs. Nil means no token is required.
 	Capability *capability.Checker
+	// Credential, when set, signs every decision as a DSSE envelope so that
+	// someone who does not trust the audit file can still verify it.
+	Credential *credential.Log
 	// Enrich adds the optional conditions (swarm level, rate and budget)
 	// to an input before the decision is taken. It may be nil, in which
 	// case the call is judged on policy, taint and capability alone.

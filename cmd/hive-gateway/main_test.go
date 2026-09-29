@@ -3,6 +3,9 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -13,6 +16,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/hive-immune/hive-immune/pkg/credential"
+	"github.com/hive-immune/hive-immune/pkg/dsse"
 )
 
 // TestMain lets the test binary double as a fake MCP stdio server so that
@@ -115,6 +121,9 @@ func TestServeRejectsBadUsage(t *testing.T) {
 		{"serve", "-agent", "a1", "-capability", "x.cap", "--", os.Args[0]},        // key missing
 		{"serve", "-agent", "a1", "-capability-key", "root.pub", "--", os.Args[0]}, // token missing
 		{"serve", "-agent", "a1", "-capability", "missing.cap", "-capability-key", "missing.pub", "--", os.Args[0]},
+		{"serve", "-agent", "a1", "-credential", "c.jsonl", "--", os.Args[0]},   // signing key missing
+		{"serve", "-agent", "a1", "-credential-key", "k.key", "--", os.Args[0]}, // file missing
+		{"serve", "-agent", "a1", "-credential", "c.jsonl", "-credential-key", filepath.Join(t.TempDir(), "no.key"), "--", os.Args[0]},
 		{"serve", "-bogus", "--", os.Args[0]},
 	}
 	for _, args := range bad {
@@ -420,6 +429,72 @@ func TestServeCapabilityEndToEnd(t *testing.T) {
 	}
 	if recs[1].Action != "allow" || recs[1].Tool != "read_file" {
 		t.Fatalf("second record = %+v", recs[1])
+	}
+}
+
+// TestServeCredentialEndToEnd: every decision is written twice - once for
+// the operator (audit) and once signed, so a reviewer with only the public
+// key can check the trail without trusting the file it came from.
+func TestServeCredentialEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "cred.key")
+	credPath := filepath.Join(dir, "credentials.jsonl")
+	var out, logs syncBuffer
+	if err := dispatch([]string{"keygen", "-out", keyPath}, nil, &out, &logs); err != nil {
+		t.Fatalf("keygen: %v", err)
+	}
+	out.Reset()
+	if err := dispatch([]string{"pubkey", "-key", keyPath}, nil, &out, &logs); err != nil {
+		t.Fatalf("pubkey: %v", err)
+	}
+	pubHex := strings.TrimSpace(out.String())
+
+	r := startServe(t, "-credential", credPath, "-credential-key", keyPath)
+	r.send(
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"read_file","arguments":{}}}`,
+	)
+	r.wait("read_file ok")
+	audit := r.finish()
+	if len(audit) != 1 {
+		t.Fatalf("audit = %+v", audit)
+	}
+
+	raw, err := os.ReadFile(credPath)
+	if err != nil {
+		t.Fatalf("read credentials: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("got %d credential lines, want 1", len(lines))
+	}
+	var env dsse.Envelope
+	if err := json.Unmarshal([]byte(lines[0]), &env); err != nil {
+		t.Fatalf("credential line: %v", err)
+	}
+	if env.PayloadType != credential.PayloadType {
+		t.Fatalf("payload type = %q", env.PayloadType)
+	}
+	pub, err := hex.DecodeString(pubHex)
+	if err != nil || len(pub) != ed25519.PublicKeySize {
+		t.Fatalf("public key %q: %v", pubHex, err)
+	}
+	p, err := credential.Verify(env, ed25519.PublicKey(pub))
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	var rec record
+	if err := json.Unmarshal(p.Decision, &rec); err != nil {
+		t.Fatalf("decision: %v", err)
+	}
+	if rec.Tool != "read_file" || rec.Action != "allow" || rec.Agent != "a1" {
+		t.Fatalf("signed decision = %+v", rec)
+	}
+
+	// A different key must not be able to read the trail.
+	pub2, _, _ := ed25519.GenerateKey(rand.Reader)
+	if _, err := credential.Verify(env, pub2); err == nil {
+		t.Fatal("the wrong public key must fail")
 	}
 }
 

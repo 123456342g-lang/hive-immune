@@ -221,6 +221,12 @@ func (s *server) append(r Record) {
 	if err := s.audit.Append(r); err != nil {
 		s.log.Error("audit write failed", "err", err)
 	}
+	// The credential is a signed copy of the same record; a failure here
+	// does not lose the decision (the audit line already has it), but it is
+	// loud because a silent gap in the signed trail is worse than a stop.
+	if err := s.cfg.Credential.Append(r); err != nil {
+		s.log.Error("credential write failed", "err", err)
+	}
 	if s.cfg.OnDecision != nil {
 		s.cfg.OnDecision(r)
 	}

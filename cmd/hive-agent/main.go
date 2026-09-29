@@ -39,6 +39,7 @@ commands:
   init-cluster  generate keys and peers.json for a new swarm
   serve         run a swarm node (gossip, decisions, optional Falco input)
   run           convert sensor events on stdin (or -in) into signed signals
+  verify        check signed gateway credentials against a public key
   keygen        create a new node identity key
   pubkey        print a key's public half for distribution
   version       print the version
@@ -70,6 +71,8 @@ func dispatch(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return pubkey(args[1:], stdout, stderr)
 	case "run":
 		return run(args[1:], stdin, stdout, stderr)
+	case "verify":
+		return verify(args[1:], stdin, stdout, stderr)
 	case "version":
 		fmt.Fprintln(stdout, "hive-agent", version)
 		return nil
