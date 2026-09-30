@@ -62,7 +62,9 @@ func validateRule(rule string) error {
 
 func parseTime(s string) (time.Time, error) {
 	t, err := time.Parse(time.RFC3339Nano, s)
-	if err != nil {
+	// "0001-01-01T00:00:00Z" is valid RFC3339 but is the zero time; a
+	// sensor event without a real timestamp must not be accepted.
+	if err != nil || t.IsZero() {
 		return time.Time{}, fmt.Errorf("%w: bad time %q", ErrMalformed, s)
 	}
 	return t, nil

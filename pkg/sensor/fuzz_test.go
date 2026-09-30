@@ -36,6 +36,8 @@ func checkEvent(t *testing.T, ev Event, err error) {
 
 func FuzzFalcoParse(f *testing.F) {
 	seedFuzz(f, "falco.jsonl")
+	// Regression: valid RFC3339 for the zero time must be rejected.
+	f.Add([]byte(`{"time":"0001-01-01T00:00:00Z","rule":"r","priority":"warning"}`))
 	f.Fuzz(func(t *testing.T, line []byte) {
 		ev, err := Falco{}.Parse(line)
 		checkEvent(t, ev, err)
