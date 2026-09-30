@@ -145,7 +145,12 @@ func TestGossipSpreadsSignalAndSwarmAgrees(t *testing.T) {
 
 func TestReceiveRejects(t *testing.T) {
 	f := newSwarm(t, "a", "b")
-	n := f.nodes["a"]
+	cfg := DefaultConfig("a", f.cluster)
+	cfg.Logger, cfg.Now = quietLogger(), f.clock.Now
+	n, err := New(cfg) // Run is never started, so no peer can echo back
+	if err != nil {
+		t.Fatal(err)
+	}
 	good := f.seal(t, "b", "b", 0.5)
 
 	if err := n.Receive(good); err != nil {
