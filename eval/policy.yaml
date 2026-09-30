@@ -1,0 +1,34 @@
+# AgentDojo workspace suite classification for hive-gateway.
+# Reads of email/calendar/files carry injection vectors, so they are
+# external: after one of them the session is tainted and writes or egress
+# need a human (deny mode without an approval channel).
+version: 1
+defaults: {risk: egress, taint: external}
+tools:
+  # --- reads ----------------------------------------------------------
+  get_current_day: {risk: read, taint: internal}
+  search_contacts_by_name: {risk: read, taint: internal}
+  search_contacts_by_email: {risk: read, taint: internal}
+  get_unread_emails: {risk: read, taint: external}
+  get_received_emails: {risk: read, taint: external}
+  get_sent_emails: {risk: read, taint: external}
+  get_draft_emails: {risk: read, taint: external}
+  search_emails: {risk: read, taint: external}
+  search_calendar_events: {risk: read, taint: external}
+  get_day_calendar_events: {risk: read, taint: external}
+  search_files_by_filename: {risk: read, taint: external}
+  get_file_by_id: {risk: read, taint: external}
+  list_files: {risk: read, taint: external}
+  search_files: {risk: read, taint: external}
+  # --- internal writes ------------------------------------------------
+  create_calendar_event: {risk: write-internal, taint: internal}
+  cancel_calendar_event: {risk: write-internal, taint: internal}
+  reschedule_calendar_event: {risk: write-internal, taint: internal}
+  add_calendar_event_participants: {risk: write-internal, taint: internal}
+  append_to_file: {risk: write-internal, taint: internal, cost: 1}
+  create_file: {risk: write-internal, taint: internal, cost: 1}
+  delete_file: {risk: write-internal, taint: internal, cost: 2}
+  delete_email: {risk: write-internal, taint: internal, cost: 2}
+  # --- data leaving the organisation ----------------------------------
+  share_file: {risk: egress, taint: internal, cost: 3}
+  send_email: {risk: egress, taint: internal, cost: 5}

@@ -1,0 +1,5 @@
+# Eval harness dependencies (Python 3.11+).
+#   python -m venv eval/.venv
+#   eval\.venv\Scripts\pip install -r eval/requirements.txt
+agentdojo==0.1.35
+openai==3.20.0

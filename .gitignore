@@ -13,6 +13,13 @@
 coverage.*
 /testdata/fuzz/**/corpus-local/
 
+# Eval runs and local artifacts
+eval/runs/
+eval/bin/
+eval/.venv/
+__pycache__/
+*.pyc
+
 # Go workspace files (local only)
 go.work
 go.work.sum
