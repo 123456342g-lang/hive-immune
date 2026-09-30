@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/pheromone"
+	"github.com/123456342g-lang/hive-immune/pkg/pheromone"
 )
 
 func testKey(seed byte) ed25519.PrivateKey {

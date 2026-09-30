@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/hive-immune/hive-immune/pkg/cluster"
-	"github.com/hive-immune/hive-immune/pkg/envelope"
+	"github.com/123456342g-lang/hive-immune/pkg/cluster"
+	"github.com/123456342g-lang/hive-immune/pkg/envelope"
 )
 
 // MaxBatch is the largest number of envelopes sent or accepted per request.

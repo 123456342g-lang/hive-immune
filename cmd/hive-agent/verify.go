@@ -23,8 +23,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/credential"
-	"github.com/hive-immune/hive-immune/pkg/dsse"
+	"github.com/123456342g-lang/hive-immune/pkg/credential"
+	"github.com/123456342g-lang/hive-immune/pkg/dsse"
 )
 
 // maxCredentialLine bounds one credential line: decisions carry digests

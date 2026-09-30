@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hive-immune/hive-immune/pkg/envelope"
-	"github.com/hive-immune/hive-immune/pkg/pheromone"
+	"github.com/123456342g-lang/hive-immune/pkg/envelope"
+	"github.com/123456342g-lang/hive-immune/pkg/pheromone"
 )
 
 // The captured fixtures are from a fixed date, so accept any age in tests.

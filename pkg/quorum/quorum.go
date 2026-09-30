@@ -18,7 +18,7 @@ import (
 	"math"
 	"slices"
 
-	"github.com/hive-immune/hive-immune/pkg/pheromone"
+	"github.com/123456342g-lang/hive-immune/pkg/pheromone"
 )
 
 // Level is the strength of the collective response.

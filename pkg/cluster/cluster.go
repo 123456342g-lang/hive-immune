@@ -18,8 +18,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/hive-immune/hive-immune/pkg/envelope"
-	"github.com/hive-immune/hive-immune/pkg/pheromone"
+	"github.com/123456342g-lang/hive-immune/pkg/envelope"
+	"github.com/123456342g-lang/hive-immune/pkg/pheromone"
 )
 
 // MaxMembers bounds the membership list. Gossip is all-to-all, so very large

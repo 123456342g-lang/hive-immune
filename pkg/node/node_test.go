@@ -17,11 +17,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/cluster"
-	"github.com/hive-immune/hive-immune/pkg/envelope"
-	"github.com/hive-immune/hive-immune/pkg/pheromone"
-	"github.com/hive-immune/hive-immune/pkg/quorum"
-	"github.com/hive-immune/hive-immune/pkg/sensor"
+	"github.com/123456342g-lang/hive-immune/pkg/cluster"
+	"github.com/123456342g-lang/hive-immune/pkg/envelope"
+	"github.com/123456342g-lang/hive-immune/pkg/pheromone"
+	"github.com/123456342g-lang/hive-immune/pkg/quorum"
+	"github.com/123456342g-lang/hive-immune/pkg/sensor"
 )
 
 // Time of the captured Falco alert in pkg/sensor/testdata.

@@ -17,7 +17,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/hive-immune/hive-immune/pkg/dsse"
+	"github.com/123456342g-lang/hive-immune/pkg/dsse"
 )
 
 // PayloadType is the DSSE payload type of every credential written here.

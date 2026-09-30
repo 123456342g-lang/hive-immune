@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/hive-immune/hive-immune/pkg/pheromone"
+	"github.com/123456342g-lang/hive-immune/pkg/pheromone"
 )
 
 // Ledger tracks how trustworthy each voter has proven to be. It is an

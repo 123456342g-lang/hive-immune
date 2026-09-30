@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/pheromone"
-	"github.com/hive-immune/hive-immune/pkg/quorum"
-	"github.com/hive-immune/hive-immune/pkg/swarm"
+	"github.com/123456342g-lang/hive-immune/pkg/pheromone"
+	"github.com/123456342g-lang/hive-immune/pkg/quorum"
+	"github.com/123456342g-lang/hive-immune/pkg/swarm"
 )
 
 // Change is a transition of one member's response level.

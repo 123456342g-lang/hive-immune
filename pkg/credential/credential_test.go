@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/hive-immune/hive-immune/pkg/dsse"
+	"github.com/123456342g-lang/hive-immune/pkg/dsse"
 )
 
 type fakeDecision struct {

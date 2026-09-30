@@ -6,9 +6,9 @@ import (
 	"math/rand/v2"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/envelope"
-	"github.com/hive-immune/hive-immune/pkg/pheromone"
-	"github.com/hive-immune/hive-immune/pkg/quorum"
+	"github.com/123456342g-lang/hive-immune/pkg/envelope"
+	"github.com/123456342g-lang/hive-immune/pkg/pheromone"
+	"github.com/123456342g-lang/hive-immune/pkg/quorum"
 )
 
 // epoch anchors simulated time so runs are reproducible.

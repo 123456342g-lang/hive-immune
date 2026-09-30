@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/hive-immune/hive-immune/pkg/pheromone"
+	"github.com/123456342g-lang/hive-immune/pkg/pheromone"
 )
 
 // domain separates hive-immune signal signatures from any other use of the

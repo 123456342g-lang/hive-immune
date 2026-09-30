@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/hive-immune/hive-immune/pkg/cluster"
-	"github.com/hive-immune/hive-immune/pkg/keyfile"
+	"github.com/123456342g-lang/hive-immune/pkg/cluster"
+	"github.com/123456342g-lang/hive-immune/pkg/keyfile"
 )
 
 // initCluster generates keys and a membership file for a new swarm. It is

@@ -26,10 +26,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/capability"
-	"github.com/hive-immune/hive-immune/pkg/credential"
-	"github.com/hive-immune/hive-immune/pkg/gateway"
-	"github.com/hive-immune/hive-immune/pkg/keyfile"
+	"github.com/123456342g-lang/hive-immune/pkg/capability"
+	"github.com/123456342g-lang/hive-immune/pkg/credential"
+	"github.com/123456342g-lang/hive-immune/pkg/gateway"
+	"github.com/123456342g-lang/hive-immune/pkg/keyfile"
 )
 
 const usage = `usage: hive-gateway <command> [flags]

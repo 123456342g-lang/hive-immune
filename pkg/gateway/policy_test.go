@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/taint"
+	"github.com/123456342g-lang/hive-immune/pkg/taint"
 )
 
 const goodPolicy = `version: 1

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/capability"
+	"github.com/123456342g-lang/hive-immune/pkg/capability"
 )
 
 // issueToken builds a checker for one subject and tool set, anchored at the

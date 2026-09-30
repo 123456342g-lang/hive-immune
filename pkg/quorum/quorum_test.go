@@ -7,7 +7,7 @@ import (
 	"math/rand/v2"
 	"testing"
 
-	"github.com/hive-immune/hive-immune/pkg/pheromone"
+	"github.com/123456342g-lang/hive-immune/pkg/pheromone"
 )
 
 func votesFor(suspect pheromone.NodeID, scores ...float64) []Vote {

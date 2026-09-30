@@ -9,7 +9,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/envelope"
+	"github.com/123456342g-lang/hive-immune/pkg/envelope"
 )
 
 // MaxLineBytes bounds one line of sensor output. Longer lines are discarded

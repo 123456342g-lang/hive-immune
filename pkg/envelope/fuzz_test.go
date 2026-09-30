@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/pheromone"
+	"github.com/123456342g-lang/hive-immune/pkg/pheromone"
 )
 
 // FuzzOpen feeds arbitrary envelopes to the verifier. It must never panic,

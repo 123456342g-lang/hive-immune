@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/envelope"
-	"github.com/hive-immune/hive-immune/pkg/pheromone"
+	"github.com/123456342g-lang/hive-immune/pkg/envelope"
+	"github.com/123456342g-lang/hive-immune/pkg/pheromone"
 )
 
 // Times of the real events captured in testdata.

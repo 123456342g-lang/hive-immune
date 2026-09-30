@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/hive-immune/hive-immune/pkg/dsse"
+	"github.com/123456342g-lang/hive-immune/pkg/dsse"
 )
 
 // fuzzKey is a fixed signing key so every run of the corpus looks the same.

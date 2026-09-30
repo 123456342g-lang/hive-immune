@@ -9,7 +9,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/hive-immune/hive-immune/pkg/sim"
+	"github.com/123456342g-lang/hive-immune/pkg/sim"
 )
 
 func main() {

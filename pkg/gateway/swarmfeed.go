@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/node"
-	"github.com/hive-immune/hive-immune/pkg/quorum"
+	"github.com/123456342g-lang/hive-immune/pkg/node"
+	"github.com/123456342g-lang/hive-immune/pkg/quorum"
 )
 
 const (

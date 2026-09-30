@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/hive-immune/hive-immune/pkg/pheromone"
+	"github.com/123456342g-lang/hive-immune/pkg/pheromone"
 )
 
 // maxSide bounds grid dimensions so a typo cannot allocate gigabytes.

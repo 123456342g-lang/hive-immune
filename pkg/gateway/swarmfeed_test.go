@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/node"
-	"github.com/hive-immune/hive-immune/pkg/quorum"
+	"github.com/123456342g-lang/hive-immune/pkg/node"
+	"github.com/123456342g-lang/hive-immune/pkg/quorum"
 )
 
 // statusServer answers /v1/status with the given level for agent a1 and

@@ -3,8 +3,8 @@ package gateway
 import (
 	"fmt"
 
-	"github.com/hive-immune/hive-immune/pkg/quorum"
-	"github.com/hive-immune/hive-immune/pkg/taint"
+	"github.com/123456342g-lang/hive-immune/pkg/quorum"
+	"github.com/123456342g-lang/hive-immune/pkg/taint"
 )
 
 // Action is what the gateway does with a tools/call.

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hive-immune/hive-immune/pkg/credential"
-	"github.com/hive-immune/hive-immune/pkg/dsse"
+	"github.com/123456342g-lang/hive-immune/pkg/credential"
+	"github.com/123456342g-lang/hive-immune/pkg/dsse"
 )
 
 // openCredential starts a credential log for the test and returns it with

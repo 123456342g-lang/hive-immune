@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/capability"
-	"github.com/hive-immune/hive-immune/pkg/credential"
-	"github.com/hive-immune/hive-immune/pkg/envelope"
-	"github.com/hive-immune/hive-immune/pkg/pheromone"
+	"github.com/123456342g-lang/hive-immune/pkg/capability"
+	"github.com/123456342g-lang/hive-immune/pkg/credential"
+	"github.com/123456342g-lang/hive-immune/pkg/envelope"
+	"github.com/123456342g-lang/hive-immune/pkg/pheromone"
 )
 
 // DenyStyle is how a refused call is reported to the MCP client.

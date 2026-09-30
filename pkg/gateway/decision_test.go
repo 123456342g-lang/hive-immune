@@ -3,7 +3,7 @@ package gateway
 import (
 	"testing"
 
-	"github.com/hive-immune/hive-immune/pkg/quorum"
+	"github.com/123456342g-lang/hive-immune/pkg/quorum"
 )
 
 func testPolicy(t *testing.T) *Policy {

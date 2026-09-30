@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/pheromone"
-	"github.com/hive-immune/hive-immune/pkg/quorum"
+	"github.com/123456342g-lang/hive-immune/pkg/pheromone"
+	"github.com/123456342g-lang/hive-immune/pkg/quorum"
 )
 
 // ErrInvalidConfig is returned when a Config fails validation.

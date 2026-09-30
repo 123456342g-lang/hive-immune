@@ -1,4 +1,4 @@
-module github.com/hive-immune/hive-immune
+module github.com/123456342g-lang/hive-immune
 
 go 1.22
 

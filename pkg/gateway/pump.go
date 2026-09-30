@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/capability"
-	"github.com/hive-immune/hive-immune/pkg/taint"
+	"github.com/123456342g-lang/hive-immune/pkg/capability"
+	"github.com/123456342g-lang/hive-immune/pkg/taint"
 )
 
 // pumpClient reads the MCP client's messages, decides on every tools/call

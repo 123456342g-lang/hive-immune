@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hive-immune/hive-immune/pkg/quorum"
+	"github.com/123456342g-lang/hive-immune/pkg/quorum"
 )
 
 // Legend explains the glyphs used in rendered frames.
