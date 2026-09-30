@@ -1,0 +1,107 @@
+# Example Kubernetes NetworkPolicies for hive-immune's Agent 行为防线.
+#
+# The MCP data plane is stdio (agent ──stdio──▶ hive-gateway ──stdio──▶
+# MCP server), so it needs no pod network rules at all: the gateway runs
+# in the agent's own process tree. What the network layer *does* protect
+# is everything around that pair:
+#
+#   * the gateway's -admin control plane (it can reset taint - never
+#     expose it; docs/gateway.md §admin),
+#   * hive-agent gossip on 7946 (signatures are verified, but keep the
+#     port cluster-internal - docs/quickstart.md),
+#   * the Falco sensor listener (bind it to 127.0.0.1, not a policy),
+#   * egress from a compromised agent pod: label the upstream MCP
+#     servers and allow only those endpoints, so stolen credentials
+#     cannot reach the internet directly.
+#
+# Label the workloads first:
+#   kubectl label pod <agent-pod> hive-immune.io/role=agent
+#   kubectl label pod <mcp-pod>   hive-immune.io/role=mcp-upstream
+#   kubectl label pod <ops-pod>   hive-immune.io/role=ops
+#
+# Requires a CNI with NetworkPolicy support (Calico, Cilium, ...).
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hive-agent-egress
+spec:
+  podSelector:
+    matchLabels:
+      hive-immune.io/role: agent
+  policyTypes: ["Egress"]
+  egress:
+    # DNS (kube-dns / CoreDNS)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Upstream MCP servers only - replace with your own CIDRs/labels.
+    # Anything else an agent pod tries to reach is dropped silently and
+    # shows up as a hive-agent / Tetragon signal.
+    - to:
+        - podSelector:
+            matchLabels:
+              hive-immune.io/role: mcp-upstream
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 8443
+    # hive-agent gossip between swarm nodes (peer-to-peer, signed)
+    - to:
+        - podSelector:
+            matchLabels:
+              hive-immune.io/role: agent
+      ports:
+        - protocol: TCP
+          port: 7946
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hive-agent-ingress
+spec:
+  podSelector:
+    matchLabels:
+      hive-immune.io/role: agent
+  policyTypes: ["Ingress"]
+  ingress:
+    # Swarm gossip only; the Falco sensor listener must be bound to
+    # 127.0.0.1 and never reaches this policy.
+    - from:
+        - podSelector:
+            matchLabels:
+              hive-immune.io/role: agent
+      ports:
+        - protocol: TCP
+          port: 7946
+---
+# The gateway admin plane is a taint-reset button. Keep it off the pod's
+# default interface entirely (bind -admin 127.0.0.1:8787); if it must be
+# reachable, expose it to ops pods only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hive-gateway-admin
+spec:
+  podSelector:
+    matchLabels:
+      hive-immune.io/role: agent
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              hive-immune.io/role: ops
+      ports:
+        - protocol: TCP
+          port: 8787

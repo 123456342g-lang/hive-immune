@@ -15,8 +15,8 @@ x-hive: &hive
   build:
     context: ../..
     args:
-      VERSION: 0.1.0
-  image: hive-immune:0.1.0
+      VERSION: 0.2.0
+  image: hive-immune:0.2.0
   volumes:
     - cluster:/cluster:ro
   depends_on:
